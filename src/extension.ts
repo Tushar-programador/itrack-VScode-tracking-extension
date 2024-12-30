@@ -6,10 +6,13 @@ import * as path from 'path';
 
 const git: SimpleGit = simpleGit();
 
-const GITHUB_USERNAME = 'tushar-programador'; 
-const GITHUB_TOKEN = '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';
+const GITHUB_USERNAME = 'tushar-programador'; // Replace with your GitHub username
+const GITHUB_TOKEN = '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'; // Replace with your GitHub PAT
 const REPO_NAME = 'code-tracking';
 
+let commitNumber = 1; // To track the number for the markdown file
+
+// Function to create GitHub repository
 async function createGitHubRepo() {
     try {
         const response = await axios.post(
@@ -36,6 +39,7 @@ async function createGitHubRepo() {
     }
 }
 
+// Function to initialize local repository and set the remote URL
 async function initializeLocalRepo(workspacePath: string, remoteUrl: string) {
     const repoPath = path.join(workspacePath, REPO_NAME);
 
@@ -51,23 +55,50 @@ async function initializeLocalRepo(workspacePath: string, remoteUrl: string) {
     vscode.window.showInformationMessage('Local repository initialized.');
 }
 
+// Function to generate a markdown file with the commit number
+async function generateMarkdownFile(repoPath: string) {
+    const markdownContent = `# Code Commit ${commitNumber}\n\nThis is an auto-generated commit.\n\nTimestamp: ${new Date().toISOString()}`;
+
+    const filePath = path.join(repoPath, `code_${commitNumber}.md`);
+    fs.writeFileSync(filePath, markdownContent);
+    commitNumber++; // Increment the commit number for the next file
+
+    vscode.window.showInformationMessage(`Generated markdown file: code_${commitNumber - 1}.md`);
+
+    return filePath;
+}
+
+// Function to commit and push the markdown file
+// Function to commit and push the markdown file
+async function commitAndPush(repoPath: string) {
+    const filePath = await generateMarkdownFile(repoPath);
+
+    try {
+        await git.cwd(repoPath);
+        await git.add(filePath); // Add the markdown file to git
+        const status = await git.status();
+
+        if (status.files.length > 0) {
+            const summary = `Auto-commit: ${new Date().toISOString()}`;
+            await git.commit(summary);
+            await git.push('origin', 'master'); // Change 'main' to 'master' if needed
+            vscode.window.showInformationMessage(`Committed and pushed changes: ${summary}`);
+        }
+    } catch (error: any) {
+        vscode.window.showErrorMessage(`Error committing changes: ${error.message}`);
+    }
+}
+
+
+// Periodic commit function
 async function commitChangesPeriodically(repoPath: string) {
     setInterval(async () => {
         try {
-            await git.cwd(repoPath);
-            await git.add('.');
-            const status = await git.status();
-
-            if (status.files.length > 0) {
-                const summary = `Auto-commit: ${new Date().toISOString()}`;
-                await git.commit(summary);
-                await git.push('origin', 'main');
-                vscode.window.showInformationMessage(`Committed and pushed changes: ${summary}`);
-            }
+            await commitAndPush(repoPath);
         } catch (error: any) {
-            vscode.window.showErrorMessage(`Error committing changes: ${error.message}`);
+            vscode.window.showErrorMessage(`Error during commit process: ${error.message}`);
         }
-    }, 20 * 60 * 1000); // 20 minutes
+    }, 1 * 60 * 1000); // 20 minutes
 }
 
 export async function activate(context: vscode.ExtensionContext) {
