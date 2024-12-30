@@ -1,26 +1,95 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import simpleGit, { SimpleGit } from 'simple-git';
+import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+const git: SimpleGit = simpleGit();
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "itrack" is now active!');
+const GITHUB_USERNAME = 'tushar-programador'; // Replace with your GitHub username
+const GITHUB_TOKEN = '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'; // Replace with your GitHub PAT
+const REPO_NAME = 'code-tracking';
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('itrack.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from itrack!');
-	});
-
-	context.subscriptions.push(disposable);
+async function createGitHubRepo() {
+    try {
+        const response = await axios.post(
+            'https://api.github.com/user/repos',
+            {
+                name: REPO_NAME,
+                private: true, // Set to false if you want a public repository
+            },
+            {
+                headers: {
+                    Authorization: `token ${GITHUB_TOKEN}`,
+                },
+            }
+        );
+        vscode.window.showInformationMessage(`GitHub repository ${REPO_NAME} created successfully.`);
+        return response.data.clone_url;
+    } catch (error: any) {
+        if (error.response && error.response.status === 422) {
+            vscode.window.showInformationMessage(`GitHub repository ${REPO_NAME} already exists.`);
+            return `https://github.com/${GITHUB_USERNAME}/${REPO_NAME}.git`;
+        }
+        vscode.window.showErrorMessage(`Error creating GitHub repository: ${error.message}`);
+        throw error;
+    }
 }
 
-// This method is called when your extension is deactivated
+async function initializeLocalRepo(workspacePath: string, remoteUrl: string) {
+    const repoPath = path.join(workspacePath, REPO_NAME);
+
+    if (!fs.existsSync(repoPath)) {
+        fs.mkdirSync(repoPath);
+    }
+
+    await git.cwd(repoPath);
+    if (!fs.existsSync(path.join(repoPath, '.git'))) {
+        await git.init();
+        await git.addRemote('origin', remoteUrl);
+    }
+    vscode.window.showInformationMessage('Local repository initialized.');
+}
+
+async function commitChangesPeriodically(repoPath: string) {
+    setInterval(async () => {
+        try {
+            await git.cwd(repoPath);
+            await git.add('.');
+            const status = await git.status();
+
+            if (status.files.length > 0) {
+                const summary = `Auto-commit: ${new Date().toISOString()}`;
+                await git.commit(summary);
+                await git.push('origin', 'main');
+                vscode.window.showInformationMessage(`Committed and pushed changes: ${summary}`);
+            }
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Error committing changes: ${error.message}`);
+        }
+    }, 20 * 60 * 1000); // 20 minutes
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+    const disposable = vscode.commands.registerCommand('itrack.startTracking', async () => {
+        const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+        if (!workspacePath) {
+            vscode.window.showErrorMessage('No workspace folder found! Please open a folder and try again.');
+            return;
+        }
+
+        try {
+            const remoteUrl = await createGitHubRepo();
+            await initializeLocalRepo(workspacePath, remoteUrl);
+            const repoPath = path.join(workspacePath, REPO_NAME);
+            await commitChangesPeriodically(repoPath);
+        } catch (error: any) {
+            vscode.window.showErrorMessage(`Error setting up tracking: ${error.message}`);
+        }
+    });
+
+    context.subscriptions.push(disposable);
+}
+
 export function deactivate() {}
