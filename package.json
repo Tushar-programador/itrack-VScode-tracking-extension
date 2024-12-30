@@ -14,8 +14,9 @@
   "contributes": {
     "commands": [
       {
-        "command": "itrack.helloWorld",
-        "title": "Hello World"
+        "command": "itrack.startTracking",
+        "title": "startTracking"
+        
       }
     ]
   },

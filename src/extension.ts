@@ -6,8 +6,8 @@ import * as path from 'path';
 
 const git: SimpleGit = simpleGit();
 
-const GITHUB_USERNAME = 'tushar-programador'; // Replace with your GitHub username
-const GITHUB_TOKEN = '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'; // Replace with your GitHub PAT
+const GITHUB_USERNAME = 'tushar-programador'; 
+const GITHUB_TOKEN = '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';
 const REPO_NAME = 'code-tracking';
 
 async function createGitHubRepo() {
