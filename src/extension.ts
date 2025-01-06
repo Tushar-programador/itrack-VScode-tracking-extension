@@ -5,6 +5,7 @@ const simpleGit = require("simple-git");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const glob = require("glob");
 
 const git = simpleGit();
 const GITHUB_USERNAME = "tushar-programador"; // Replace with your GitHub username
@@ -13,6 +14,7 @@ const REPO_NAME = "code-tracking";
 let commitNumber = 1;
 
 // Function to create GitHub repository
+
 async function createGitHubRepo() {
   try {
     const response = await axios.post(
@@ -45,8 +47,8 @@ async function createGitHubRepo() {
   }
 }
 
-// Function to initialize local repository
-async function initializeLocalRepo(workspacePath: string, remoteUrl: string) {
+
+async function initializeLocalRepo(workspacePath : string, remoteUrl : string) {
   const repoPath = path.join(workspacePath, REPO_NAME);
   if (!fs.existsSync(repoPath)) {
     fs.mkdirSync(repoPath);
@@ -56,21 +58,47 @@ async function initializeLocalRepo(workspacePath: string, remoteUrl: string) {
     await git.init();
     await git.addRemote("origin", remoteUrl);
   }
-  vscode.window.showInformationMessage("Local repository initialized.");
+
+  // Pull the latest changes
+  await git.pull("origin", "master").catch(() => {
+    console.log("[DEBUG] No master branch found. Proceeding without pull.");
+  });
+
+  // Determine the highest commit number
+  const files = glob.sync(path.join(repoPath, "code_*.md"));
+const numbers: number[] = files.map((file: string): number => {
+    const match: RegExpMatchArray | null = file.match(/code_(\d+)\.md/);
+    return match ? parseInt(match[1], 10) : 0;
+});
+  commitNumber = Math.max(0, ...numbers) + 1;
+
+  vscode.window.showInformationMessage(
+    `Local repository initialized. Starting from commit ${commitNumber}.`
+  );
   return repoPath;
 }
 
+
 // Function to generate a markdown file for the commit
-async function generateMarkdownFile(repoPath: string) {
+async function generateMarkdownFile(repoPath : string) {
   const markdownContent = `# Code Commit ${commitNumber}\n\nThis is an auto-generated commit.\n\nTimestamp: ${new Date().toISOString()}`;
   const filePath = path.join(repoPath, `code_${commitNumber}.md`);
-  fs.writeFileSync(filePath, markdownContent);
-  commitNumber++;
-  return filePath;
+
+  try {
+    fs.writeFileSync(filePath, markdownContent);
+    console.log(`[DEBUG] File created: ${filePath}`);
+    commitNumber++;
+    return filePath;
+  } catch (error) {
+    console.error(`[DEBUG] Error creating file: ${error}`);
+    throw error;
+  }
 }
 
+
+
 // Function to commit and push changes
-async function commitAndPush(repoPath: string) {
+async function commitAndPush(repoPath : string) {
   try {
     vscode.window.showInformationMessage("Starting commit and push process...");
     console.log("[DEBUG] Changing working directory to:", repoPath);
@@ -86,33 +114,44 @@ async function commitAndPush(repoPath: string) {
     console.log("[DEBUG] Pulling latest changes...");
     await git.pull("origin", branchName);
 
-    console.log("[DEBUG] Adding all changes...");
-    await git.add("./*");
+    console.log("[DEBUG] Generating markdown file...");
+    const filePath = await generateMarkdownFile(repoPath);
+    if (!fs.existsSync(filePath)) {
+    console.error("[ERROR] Markdown file was not created!");
+    return;
+    
+    }
+    console.log("[DEBUG] Adding new file to Git...");
+    await git.add(filePath);
 
     const status = await git.status();
-    console.log("[DEBUG] Git status:", status);
+    console.log("[DEBUG] Git status after adding file:", status);
 
     if (status.files.length > 0) {
       const summary = `Auto-commit: ${new Date().toISOString()}`;
       console.log("[DEBUG] Committing changes with summary:", summary);
       await git.commit(summary);
-
+      
       console.log("[DEBUG] Pushing changes...");
       await git.push("origin", branchName);
       vscode.window.showInformationMessage(
         `Committed and pushed changes: ${summary}`
       );
     } else {
+         console.log("[DEBUG] Git status after adding file:", status);
+         console.log("[DEBUG] Git status after adding file:", status);
       vscode.window.showInformationMessage("No changes to commit.");
       console.log("[DEBUG] No changes to commit.");
     }
   } catch (error) {
     console.error("[DEBUG] Error during commit and push:", error);
     vscode.window.showErrorMessage(
-      `Error during commit process: ${error instanceof Error ? error.message : 'Unknown error'}`
+      `Error during commit process: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }
+
+
 
 // Function to periodically commit changes
 async function commitChangesPeriodically(repoPath: string) {
